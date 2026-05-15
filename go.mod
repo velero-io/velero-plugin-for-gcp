@@ -1,6 +1,8 @@
 module github.com/vmware-tanzu/velero-plugin-for-gcp
 
-go 1.25.9
+go 1.25.7
+
+toolchain go1.25.10
 
 require (
 	cloud.google.com/go/storage v1.57.2
@@ -9,7 +11,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.11.1
-	github.com/vmware-tanzu/velero v1.18.1-rc.1
+	github.com/vmware-tanzu/velero v1.18.0
 	golang.org/x/oauth2 v0.34.0
 	google.golang.org/api v0.256.0
 	k8s.io/api v0.33.3
