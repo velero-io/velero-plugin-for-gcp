@@ -46,4 +46,9 @@ spec:
     #
     # Optional (default to STANDARD).
     snapshotType: snapshot-type
+
+    # Configuration of the universe domain.
+    #
+    # Optional.
+    universeDomain: googleapis.com
 ```

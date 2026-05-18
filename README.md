@@ -110,6 +110,7 @@ These permissions are required by Velero to manage snapshot resources in the GCP
         compute.disks.get
         compute.disks.create
         compute.disks.createSnapshot
+        compute.disks.setLabels
         compute.projects.get
         compute.snapshots.get
         compute.snapshots.create

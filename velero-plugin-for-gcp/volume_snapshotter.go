@@ -40,11 +40,12 @@ import (
 )
 
 const (
-	zoneSeparator       = "__"
-	projectKey          = "project"
-	snapshotLocationKey = "snapshotLocation"
-	snapshotTypeKey     = "snapshotType"
-	volumeProjectKey    = "volumeProject"
+	zoneSeparator       		= "__"
+	projectKey          		= "project"
+	snapshotLocationKey 		= "snapshotLocation"
+	snapshotTypeKey     		= "snapshotType"
+	volumeProjectKey    		= "volumeProject"
+	snapshotUniverseDomainKey   = "universeDomain"
 )
 
 var pdCSIDriver = map[string]bool{
@@ -75,6 +76,7 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 		projectKey,
 		credentialsFileConfigKey,
 		volumeProjectKey,
+		snapshotUniverseDomainKey,
 	); err != nil {
 		return err
 	}
@@ -134,6 +136,11 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 		b.snapshotType = snapshotType
 	default:
 		return errors.Errorf("unsupported snapshot type: %q", snapshotType)
+	}
+
+	// if universeDomain is provided, we need to pass it when creating new compute service client.
+	if snapshotUniverseDomain, ok := config[snapshotUniverseDomainKey]; ok {
+		clientOptions = append(clientOptions, option.WithUniverseDomain(snapshotUniverseDomain))
 	}
 
 	gce, err := compute.NewService(context.TODO(), clientOptions...)
