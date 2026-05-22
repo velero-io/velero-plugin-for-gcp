@@ -1,4 +1,5 @@
 [![Build Status][101]][102]
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvelero-io%2Fvelero-plugin-for-gcp.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvelero-io%2Fvelero-plugin-for-gcp?ref=badge_shield)
 
 # Plugins for Google Cloud Platform (GCP)
 
@@ -333,3 +334,7 @@ Please check the possible configuration options in the [VSL configuration docume
 [101]: https://github.com/vmware-tanzu/velero-plugin-for-gcp/workflows/Main%20CI/badge.svg
 [102]: https://github.com/vmware-tanzu/velero-plugin-for-gcp/actions?query=workflow%3A"Main+CI"
 [103]: https://github.com/vmware-tanzu/velero/issues/new/choose
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvelero-io%2Fvelero-plugin-for-gcp.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvelero-io%2Fvelero-plugin-for-gcp?ref=badge_large)
