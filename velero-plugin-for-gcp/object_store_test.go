@@ -158,6 +158,13 @@ func TestObjectExists(t *testing.T) {
 	}
 }
 
+func TestCreateSignedURL_emptyGoogleAccessID(t *testing.T) {
+	o := newObjectStore(velerotest.NewLogger())
+	// googleAccessID is empty — simulates external_account credentials with no serviceAccount in BSL config
+	_, err := o.CreateSignedURL("bucket", "key", 0)
+	require.EqualError(t, err, "GoogleAccessID is empty, perhaps using external_account credentials, cannot create signed URL")
+}
+
 func Test_getSecretAccountKey(t *testing.T) {
 	type args struct {
 		secretByte []byte
