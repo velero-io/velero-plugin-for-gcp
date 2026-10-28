@@ -16,16 +16,25 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"io"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/storage"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	velerotest "github.com/vmware-tanzu/velero/pkg/test"
+	"google.golang.org/api/iamcredentials/v1"
+	"google.golang.org/api/option"
 )
 
 type mockWriteCloser struct {
@@ -221,4 +230,95 @@ func Test_getSecretAccountKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testPrivateKey(t *testing.T) []byte {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+}
+
+func TestCreateSignedURLUsesResolvedStorageHost(t *testing.T) {
+	privateKey := testPrivateKey(t)
+	tests := []struct {
+		name     string
+		options  []option.ClientOption
+		wantHost string
+	}{
+		{
+			name:     "default universe stays on storage.googleapis.com",
+			wantHost: "storage.googleapis.com",
+		},
+		{
+			name:     "universe domain rewrites the signed URL host",
+			options:  []option.ClientOption{option.WithUniverseDomain("gdc.example.com")},
+			wantHost: "storage.gdc.example.com",
+		},
+		{
+			name:     "store endpoint overrides the signed URL host",
+			options:  []option.ClientOption{option.WithEndpoint("https://storage.custom.example/storage/v1/")},
+			wantHost: "storage.custom.example",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clientOpts := append([]option.ClientOption{option.WithoutAuthentication()}, tc.options...)
+			client, err := storage.NewClient(context.Background(), clientOpts...)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, client.Close())
+			})
+
+			o := newObjectStore(velerotest.NewLogger())
+			o.client = client
+			o.googleAccessID = "velero@example.iam.gserviceaccount.com"
+			o.privateKey = privateKey
+
+			signed, err := o.CreateSignedURL("my-bucket", "backups/backup.tar.gz", time.Hour)
+			require.NoError(t, err)
+
+			parsed, err := url.Parse(signed)
+			require.NoError(t, err)
+			assert.Equal(t, "https", parsed.Scheme)
+			assert.Equal(t, tc.wantHost, parsed.Host)
+			assert.Equal(t, "/my-bucket/backups/backup.tar.gz", parsed.Path)
+			assert.Equal(t, o.googleAccessID, parsed.Query().Get("GoogleAccessId"))
+			assert.NotEmpty(t, parsed.Query().Get("Signature"))
+		})
+	}
+}
+
+func TestCreateSignedURLRequiresGoogleAccessID(t *testing.T) {
+	o := newObjectStore(velerotest.NewLogger())
+	_, err := o.CreateSignedURL("bucket", "key", time.Hour)
+	require.EqualError(t, err, "GoogleAccessID is empty, perhaps using external_account credentials, cannot create signed URL")
+}
+
+func TestCreateSignedURLRequiresClient(t *testing.T) {
+	o := newObjectStore(velerotest.NewLogger())
+	o.googleAccessID = "velero@example.iam.gserviceaccount.com"
+	o.privateKey = testPrivateKey(t)
+
+	_, err := o.CreateSignedURL("bucket", "key", time.Hour)
+	require.EqualError(t, err, "storage client is not initialized")
+}
+
+func TestIAMCredentialsClientOptionsUniverseDomain(t *testing.T) {
+	withUniverse := append(
+		iamCredentialsClientOptions(map[string]string{universeDomainKey: "gdc.example.com"}),
+		option.WithoutAuthentication(),
+	)
+	svc, err := iamcredentials.NewService(context.Background(), withUniverse...)
+	require.NoError(t, err)
+	assert.Equal(t, "https://iamcredentials.gdc.example.com/", svc.BasePath)
+
+	defaultUniverse := append(iamCredentialsClientOptions(map[string]string{}), option.WithoutAuthentication())
+	svc, err = iamcredentials.NewService(context.Background(), defaultUniverse...)
+	require.NoError(t, err)
+	assert.Equal(t, "https://iamcredentials.googleapis.com/", svc.BasePath)
 }

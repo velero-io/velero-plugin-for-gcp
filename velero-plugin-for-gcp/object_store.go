@@ -211,8 +211,20 @@ func (o *ObjectStore) initFromComputeEngine(config map[string]string) error {
 	if !ok {
 		return errors.Errorf("serviceAccount is expected to be provided as an item in BackupStorageLocation's config")
 	}
-	o.iamSvc, err = iamcredentials.NewService(context.Background())
+	// SignBlob must target the same universe as the storage client. The default
+	// IAM Credentials endpoint is iamcredentials.googleapis.com.
+	o.iamSvc, err = iamcredentials.NewService(context.Background(), iamCredentialsClientOptions(config)...)
 	return err
+}
+
+// iamCredentialsClientOptions returns client options so workload-identity
+// signing follows a non-default universe domain.
+func iamCredentialsClientOptions(config map[string]string) []option.ClientOption {
+	universeDomain, ok := config[universeDomainKey]
+	if !ok || universeDomain == "" {
+		return nil
+	}
+	return []option.ClientOption{option.WithUniverseDomain(universeDomain)}
 }
 
 func (o *ObjectStore) PutObject(bucket, key string, body io.Reader) error {
@@ -337,5 +349,12 @@ func (o *ObjectStore) CreateSignedURL(bucket, key string, ttl time.Duration) (st
 		options.PrivateKey = o.privateKey
 	}
 
-	return storage.SignedURL(bucket, key, &options)
+	// storage.SignedURL always builds https://storage.googleapis.com/... and
+	// ignores universeDomain and storeEndpoint. Bucket.SignedURL copies the
+	// host already resolved on the storage client (storage.<universeDomain>,
+	// or the explicit storeEndpoint when one is configured).
+	if o.client == nil {
+		return "", errors.New("storage client is not initialized")
+	}
+	return o.client.Bucket(bucket).SignedURL(key, &options)
 }

@@ -49,8 +49,13 @@ spec:
     # Optional.
     storeEndpoint: storage-example.p.googleapis.com
 
-    # Configuration of the universe domain
+    # Universe domain for Google APIs in this location, including the signed
+    # URLs Velero generates to download backups. The default universe
+    # googleapis.com produces https://storage.googleapis.com/... URLs. A
+    # non-default universe, such as Google Distributed Cloud, produces
+    # https://storage.<universeDomain>/... URLs. storeEndpoint overrides that
+    # host when it is set.
     #
-    # Optional.
+    # Optional (defaults to "googleapis.com").
     universeDomain: googleapis.com
 ```
