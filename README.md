@@ -159,7 +159,7 @@ Note that Google Service Account keys are valid for decades (no clear expiry dat
 
 #### Option 2: Using File-sourced workforce identity federation short lived credentials
 
-Keep in mind that [Workforce Identity Federation Users cannot generate signed URLs](https://cloud.google.com/iam/docs/federated-identity-supported-services#:~:text=workforce%20identity%20federation%20users%20cannot%20generate%20signed%20URLs.). This means, if you are using Workforce Identity Federation, you will not be able to run `velero backup logs`, `velero backup download`, `velero backup describe` and `velero restore describe`.
+Keep in mind that [Workforce Identity Federation Users cannot generate signed URLs](https://cloud.google.com/iam/docs/federated-identity-supported-services#:~:text=workforce%20identity%20federation%20users%20cannot%20generate%20signed%20URLs.) directly as the federated identity. However, you can still generate signed URLs by setting `serviceAccount` in the BackupStorageLocation config so that the plugin impersonates that service account (using the `iam.serviceAccounts.signBlob` permission) instead of signing directly. This enables `velero backup logs`, `velero backup download`, `velero backup describe` and `velero restore describe` when using Workforce/Workload Identity Federation.
 
 This involves creating an external credential file and using it as `--secret-file` during [installation](#Install-and-start-Velero).
 

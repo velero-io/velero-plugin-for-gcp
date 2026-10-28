@@ -35,6 +35,8 @@ spec:
 
     # Name of the GCP service account to use for this backup storage location. Specify the
     # service account here if you want to use workload identity instead of providing the key file.
+    # It is also required when using Workforce/Workload Identity Federation (external_account
+    # credentials) so that the plugin can impersonate this service account to generate signed URLs.
     #
     # Optional (defaults to "false").
     serviceAccount: my-service-account
