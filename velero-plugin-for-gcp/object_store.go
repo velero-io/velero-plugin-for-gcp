@@ -32,7 +32,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
-	veleroplugin "github.com/vmware-tanzu/velero/pkg/plugin/framework"
+	veleroplugin "github.com/velero-io/velero/pkg/plugin/framework"
 )
 
 const (

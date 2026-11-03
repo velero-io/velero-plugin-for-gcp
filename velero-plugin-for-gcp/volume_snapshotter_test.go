@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	velerotest "github.com/vmware-tanzu/velero/pkg/test"
+	velerotest "github.com/velero-io/velero/pkg/test"
 )
 
 func TestGetVolumeID(t *testing.T) {

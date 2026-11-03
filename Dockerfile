@@ -47,7 +47,7 @@ LABEL \
 	org.opencontainers.image.source="https://github.com/velero-io/velero-plugin-for-gcp" \
 	org.opencontainers.image.version=${VERSION} \
 	org.opencontainers.image.revision=${GIT_SHA} \
-	org.opencontainers.image.vendor="vmware-tanzu" \
+	org.opencontainers.image.vendor="velero-io" \
 	org.opencontainers.image.licenses="Apache-2.0" \
 	org.opencontainers.image.title="velero-plugin-for-gcp" \
 	org.opencontainers.image.description="Plugins to support Velero on Google Cloud Platform (GCP)" \
