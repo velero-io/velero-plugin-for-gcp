@@ -36,7 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	veleroplugin "github.com/vmware-tanzu/velero/pkg/plugin/framework"
+	veleroplugin "github.com/velero-io/velero/pkg/plugin/framework"
 )
 
 const (
