@@ -470,12 +470,13 @@ func TestInit(t *testing.T) {
 			},
 		},
 		{
-			name: "Init with archive snapshot type.",
+			name: "Init with archive snapshot type and custom universe domain.",
 			config: map[string]string{
 				"project":          "project-a",
 				"snapshotLocation": "default",
 				"snapshotType":     "archive",
 				"volumeProject":    "project-b",
+				"universeDomain": 	"googleapis-ppd.com",
 			},
 			expectedVolumeSnapshotter: VolumeSnapshotter{
 				snapshotLocation: "default",
