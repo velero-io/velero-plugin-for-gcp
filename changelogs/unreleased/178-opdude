@@ -1,1 +1,0 @@
-Attempt to copy labels from source Disk to snapshot to help with tracking your snapshots in the Google console and billing account, requires `compute.snapshots.setLabels` permission but will fall back to the previous behavior if the permission is not available.

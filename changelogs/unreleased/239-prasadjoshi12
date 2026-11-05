@@ -1,1 +1,0 @@
-Fix ObjectExists method to properly handle wrapped storage.ErrObjectNotExist errors from Google Cloud Storage API. 
