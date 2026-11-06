@@ -74,6 +74,8 @@ type ObjectStore struct {
 	bucketWriter   bucketWriter
 	iamSvc         *iamcredentials.Service
 	fileCredType   credAccountKeys
+	// signedURLHost is the storage host used in signed URLs; empty means the library default (storage.googleapis.com).
+	signedURLHost string
 }
 
 func newObjectStore(logger logrus.FieldLogger) *ObjectStore {
@@ -152,6 +154,7 @@ func (o *ObjectStore) Init(config map[string]string) error {
 	if universeDomain, ok := config[universeDomainKey]; ok {
 		clientOptions = append(clientOptions, option.WithUniverseDomain(universeDomain))
 	}
+	o.signedURLHost = signedURLHost(config)
 
 	if creds.JSON != nil {
 		o.fileCredType, err = getSecretAccountTypeKey(creds.JSON)
@@ -331,6 +334,10 @@ func (o *ObjectStore) CreateSignedURL(bucket, key string, ttl time.Duration) (st
 		Expires:        time.Now().Add(ttl),
 	}
 
+	if o.signedURLHost != "" {
+		options.Hostname = o.signedURLHost
+	}
+
 	if o.privateKey == nil {
 		options.SignBytes = o.SignBytes
 	} else {
@@ -338,4 +345,14 @@ func (o *ObjectStore) CreateSignedURL(bucket, key string, ttl time.Duration) (st
 	}
 
 	return storage.SignedURL(bucket, key, &options)
+}
+
+// signedURLHost returns the host to put in signed URLs. storage.SignedURL does not use the client options, so
+// outside the default universe it would always point at storage.googleapis.com, which rejects the signature.
+func signedURLHost(config map[string]string) string {
+	universeDomain := config[universeDomainKey]
+	if universeDomain == "" || universeDomain == "googleapis.com" {
+		return ""
+	}
+	return "storage." + universeDomain
 }

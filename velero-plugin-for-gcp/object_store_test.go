@@ -222,3 +222,20 @@ func Test_getSecretAccountKey(t *testing.T) {
 		})
 	}
 }
+
+func TestSignedURLHost(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]string
+		want   string
+	}{
+		{name: "no universe domain", config: map[string]string{}, want: ""},
+		{name: "default universe domain", config: map[string]string{universeDomainKey: "googleapis.com"}, want: ""},
+		{name: "custom universe domain", config: map[string]string{universeDomainKey: "example-universe.com"}, want: "storage.example-universe.com"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, signedURLHost(tc.config))
+		})
+	}
+}

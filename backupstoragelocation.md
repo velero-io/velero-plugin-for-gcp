@@ -49,7 +49,8 @@ spec:
     # Optional.
     storeEndpoint: storage-example.p.googleapis.com
 
-    # Configuration of the universe domain
+    # Configuration of the universe domain. Outside googleapis.com, signed URLs
+    # (velero backup logs/download) use storage.<universeDomain> as host.
     #
     # Optional.
     universeDomain: googleapis.com
