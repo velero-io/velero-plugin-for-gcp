@@ -158,9 +158,15 @@ func (o *ObjectStore) Init(config map[string]string) error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		if o.fileCredType == serviceAccountKey {
+		switch o.fileCredType {
+		case serviceAccountKey:
 			// Using Credentials File
 			err = o.initFromKeyFile(creds)
+		case externalAccountKey:
+			// Using Workload Identity Federation - read serviceAccount from BSL config for signing
+			err = o.initFromComputeEngine(config)
+		default:
+			o.log.Warnf("Unknown credentials type %q, skipping credentials initialization", o.fileCredType)
 		}
 	} else {
 		// Using compute engine credentials. Use this if workload identity is enabled.
