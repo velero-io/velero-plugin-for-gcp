@@ -332,21 +332,8 @@ func (b *VolumeSnapshotter) createSnapshot(snapshotName, volumeID, volumeAZ stri
 		snapshot.StorageLocations = []string{b.snapshotLocation}
 	}
 
-	// Try creating snapshot with labels
-	_, err = b.gce.Snapshots.Insert(b.snapshotProject, snapshot).Do()
-
-	// If we get a permission error for labels, retry without them
-	if err != nil && isLabelPermissionError(err) {
-		b.log.WithError(err).Warn("Missing compute.snapshots.setLabels permission, creating snapshot without labels")
-
-		// Retry without labels
-		snapshot.Labels = nil
-		_, err = b.gce.Snapshots.Insert(b.snapshotProject, snapshot).Do()
-		if err != nil {
-			return "", errors.WithStack(err)
-		}
-	} else if err != nil {
-		return "", errors.WithStack(err)
+	if err := b.insertSnapshot(snapshot); err != nil {
+		return "", err
 	}
 
 	return snapshot.Name, nil
@@ -370,12 +357,29 @@ func (b *VolumeSnapshotter) createRegionSnapshot(snapshotName, volumeID, volumeR
 		gceSnap.StorageLocations = []string{b.snapshotLocation}
 	}
 
-	_, err = b.gce.Snapshots.Insert(b.snapshotProject, &gceSnap).Do()
-	if err != nil {
-		return "", errors.WithStack(err)
+	if err := b.insertSnapshot(&gceSnap); err != nil {
+		return "", err
 	}
 
 	return gceSnap.Name, nil
+}
+
+// insertSnapshot creates the snapshot with the disk's labels. If the
+// labels can't be set because compute.snapshots.setLabels is missing,
+// it creates the snapshot again without them.
+func (b *VolumeSnapshotter) insertSnapshot(snapshot *compute.Snapshot) error {
+	_, err := b.gce.Snapshots.Insert(b.snapshotProject, snapshot).Do()
+	if err != nil && len(snapshot.Labels) > 0 && isLabelPermissionError(err) {
+		b.log.WithError(err).Warn("Missing compute.snapshots.setLabels permission, creating snapshot without labels")
+
+		snapshot.Labels = nil
+		_, err = b.gce.Snapshots.Insert(b.snapshotProject, snapshot).Do()
+	}
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
 }
 
 func getSnapshotTags(veleroTags map[string]string, diskDescription string, log logrus.FieldLogger) string {

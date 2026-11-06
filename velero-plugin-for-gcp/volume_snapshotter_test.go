@@ -17,7 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -25,6 +28,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/option"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -542,6 +547,78 @@ func TestIsVolumeCreatedCrossProjects(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.expectedResult, test.volumeSnapshotter.IsVolumeCreatedCrossProjects(test.volumeHandle))
+		})
+	}
+}
+
+func TestCreateSnapshotRetriesWithoutLabels(t *testing.T) {
+	tests := []struct {
+		name     string
+		volumeAZ string
+		diskPath string
+	}{
+		{
+			name:     "zonal disk",
+			volumeAZ: "us-central1-a",
+			diskPath: "/projects/test-project/zones/us-central1-a/disks/test-disk",
+		},
+		{
+			name:     "regional disk",
+			volumeAZ: "us-central1-a__us-central1-b",
+			diskPath: "/projects/test-project/regions/us-central1/disks/test-disk",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var inserts []compute.Snapshot
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/projects/test-project":
+					_ = json.NewEncoder(w).Encode(&compute.Project{})
+				case r.Method == http.MethodGet && r.URL.Path == tc.diskPath:
+					_ = json.NewEncoder(w).Encode(&compute.Disk{
+						Name:     "test-disk",
+						SelfLink: "https://compute.googleapis.com/compute/v1" + tc.diskPath,
+						Labels:   map[string]string{"team": "storage"},
+					})
+				case r.Method == http.MethodPost && r.URL.Path == "/projects/test-project/global/snapshots":
+					var snap compute.Snapshot
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&snap))
+					inserts = append(inserts, snap)
+					if len(snap.Labels) > 0 {
+						w.WriteHeader(http.StatusForbidden)
+						_, _ = w.Write([]byte(`{"error":{"code":403,"message":"Required 'compute.snapshots.setLabels' permission for 'projects/test-project/global/snapshots/test'"}}`))
+						return
+					}
+					_ = json.NewEncoder(w).Encode(&compute.Operation{Name: "op"})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+
+			gce, err := compute.NewService(context.Background(),
+				option.WithEndpoint(srv.URL+"/"),
+				option.WithHTTPClient(srv.Client()),
+			)
+			require.NoError(t, err)
+
+			b := &VolumeSnapshotter{
+				log:             logrus.New(),
+				gce:             gce,
+				volumeProject:   "test-project",
+				snapshotProject: "test-project",
+				snapshotType:    "STANDARD",
+			}
+
+			name, err := b.CreateSnapshot("test-disk", tc.volumeAZ, map[string]string{"velero.io/backup": "b1"})
+			require.NoError(t, err)
+			require.Len(t, inserts, 2)
+			assert.Equal(t, map[string]string{"team": "storage"}, inserts[0].Labels)
+			assert.Empty(t, inserts[1].Labels)
+			assert.Equal(t, name, inserts[1].Name)
 		})
 	}
 }
