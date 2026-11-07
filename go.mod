@@ -2,6 +2,8 @@ module github.com/velero-io/velero-plugin-for-gcp
 
 go 1.27.0
 
+toolchain go1.27.3
+
 require (
 	cloud.google.com/go/storage v1.62.3
 	github.com/gofrs/uuid v4.2.0+incompatible
@@ -9,7 +11,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	github.com/velero-io/velero v0.0.0-20261104073004-8eaef0e9b87d
+	github.com/velero-io/velero v1.19.0-rc.1
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.283.0
 	k8s.io/api v0.36.1
