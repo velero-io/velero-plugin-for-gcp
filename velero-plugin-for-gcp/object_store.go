@@ -211,7 +211,12 @@ func (o *ObjectStore) initFromComputeEngine(config map[string]string) error {
 	if !ok {
 		return errors.Errorf("serviceAccount is expected to be provided as an item in BackupStorageLocation's config")
 	}
-	o.iamSvc, err = iamcredentials.NewService(context.Background())
+	clientOptions := []option.ClientOption{}
+	// if using a universeDomain, we need to pass it when initiate a new iam credentials service
+	if universeDomain, ok := config[universeDomainKey]; ok {
+		clientOptions = append(clientOptions, option.WithUniverseDomain(universeDomain))
+	}
+	o.iamSvc, err = iamcredentials.NewService(context.Background(), clientOptions...)
 	return err
 }
 
@@ -337,5 +342,5 @@ func (o *ObjectStore) CreateSignedURL(bucket, key string, ttl time.Duration) (st
 		options.PrivateKey = o.privateKey
 	}
 
-	return storage.SignedURL(bucket, key, &options)
+	return o.client.Bucket(bucket).SignedURL(key, &options)
 }
