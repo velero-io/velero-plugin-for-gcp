@@ -159,6 +159,8 @@ Note that Google Service Account keys are valid for decades (no clear expiry dat
 
 Keep in mind that [Workforce Identity Federation Users cannot generate signed URLs](https://cloud.google.com/iam/docs/federated-identity-supported-services#:~:text=workforce%20identity%20federation%20users%20cannot%20generate%20signed%20URLs.). This means, if you are using Workforce Identity Federation, you will not be able to run `velero backup logs`, `velero backup download`, `velero backup describe` and `velero restore describe`.
 
+If the external credential file impersonates a service account (`--service-account` flag of `create-cred-config`), Velero signs URLs as that service account through the IAM `signBlob` API, so these commands work. This requires granting the service account the `roles/iam.serviceAccountTokenCreator` role on itself, which includes the `iam.serviceAccounts.signBlob` permission.
+
 This involves creating an external credential file and using it as `--secret-file` during [installation](#Install-and-start-Velero).
 
 1. Create a Workforce Identity Federation external credential file.

@@ -16,16 +16,22 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"encoding/base64"
 	"errors"
 	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/storage"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	velerotest "github.com/velero-io/velero/pkg/test"
+	"google.golang.org/api/option"
 )
 
 type mockWriteCloser struct {
@@ -156,6 +162,53 @@ func TestObjectExists(t *testing.T) {
 			assert.Equal(t, tc.expectedExists, exists)
 		})
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestCreateSignedURLWithImpersonatedExternalAccount(t *testing.T) {
+	credentials := []byte(`{
+  "type": "external_account",
+  "audience": "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID",
+  "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+  "token_url": "https://sts.googleapis.com/v1/token",
+  "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/velero@PROJECT_ID.iam.gserviceaccount.com:generateAccessToken",
+  "credential_source": {
+    "file": "PATH_TO_TOKEN"
+  }
+}
+`)
+
+	var signBlobPath string
+	httpClient := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		signBlobPath = req.URL.Path
+		body := `{"keyId": "KEY_ID", "signedBlob": "` + base64.StdEncoding.EncodeToString([]byte("signature")) + `"}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+
+	client, err := storage.NewClient(context.Background(), option.WithAuthCredentialsJSON(option.ExternalAccount, credentials), option.WithHTTPClient(httpClient))
+	require.NoError(t, err)
+
+	o := newObjectStore(velerotest.NewLogger())
+	o.client = client
+
+	signedURL, err := o.CreateSignedURL("bucket", "key", time.Minute)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/v1/projects/-/serviceAccounts/velero@PROJECT_ID.iam.gserviceaccount.com:signBlob", signBlobPath)
+	u, err := url.Parse(signedURL)
+	require.NoError(t, err)
+	assert.Equal(t, "velero@PROJECT_ID.iam.gserviceaccount.com", u.Query().Get("GoogleAccessId"))
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("signature")), u.Query().Get("Signature"))
 }
 
 func Test_getSecretAccountKey(t *testing.T) {
