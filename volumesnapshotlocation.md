@@ -42,6 +42,17 @@ spec:
     # Optional (default to be same the credential's project).
     volumeProject: project-id
 
+    # The zone that restored disks are created in, instead of the zone recorded in
+    # the backup. Use it to restore into a cluster in another zone or region, for
+    # example in a disaster recovery. The plugin also points the zone and region in
+    # the restored PV's volume handle, node affinity and topology labels at this
+    # zone. Regional disks are restored as zonal disks in this zone.
+    # Snapshots must be stored in a location that covers the target zone, such as
+    # a multi-region.
+    #
+    # Optional (default: the zone recorded in the backup).
+    volumeZone: europe-west2-b
+
     # The type of the created snapshot. Two types are supported: STANDARD and ARCHIVE.
     #
     # Optional (default to STANDARD).

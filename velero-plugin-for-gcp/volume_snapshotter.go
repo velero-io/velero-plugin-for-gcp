@@ -45,6 +45,7 @@ const (
 	snapshotLocationKey = "snapshotLocation"
 	snapshotTypeKey     = "snapshotType"
 	volumeProjectKey    = "volumeProject"
+	volumeZoneKey       = "volumeZone"
 )
 
 var pdCSIDriver = map[string]bool{
@@ -54,6 +55,16 @@ var pdCSIDriver = map[string]bool{
 
 var pdVolRegexp = regexp.MustCompile(`^projects\/[^\/]+\/(zones|regions)\/[^\/]+\/disks\/[^\/]+$`)
 
+var zoneRegexp = regexp.MustCompile(`^[a-z]+-[a-z]+[0-9]+-[a-z]$`)
+
+var pdLocationRegexp = regexp.MustCompile(`\/(zones|regions)\/[^\/]+\/disks\/`)
+
+// Node affinity and label keys that pin a PV to a zone or a region.
+var (
+	zoneTopologyKeys   = []string{"topology.kubernetes.io/zone", "failure-domain.beta.kubernetes.io/zone", "topology.gke.io/zone"}
+	regionTopologyKeys = []string{"topology.kubernetes.io/region", "failure-domain.beta.kubernetes.io/region"}
+)
+
 type VolumeSnapshotter struct {
 	log              logrus.FieldLogger
 	gce              *compute.Service
@@ -61,6 +72,9 @@ type VolumeSnapshotter struct {
 	volumeProject    string
 	snapshotProject  string
 	snapshotType     string
+	// volumeZone, if set, is the zone that restored disks are created in,
+	// instead of the zone recorded in the backup.
+	volumeZone string
 }
 
 func newVolumeSnapshotter(logger logrus.FieldLogger) *VolumeSnapshotter {
@@ -75,6 +89,7 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 		projectKey,
 		credentialsFileConfigKey,
 		volumeProjectKey,
+		volumeZoneKey,
 	); err != nil {
 		return err
 	}
@@ -111,6 +126,11 @@ func (b *VolumeSnapshotter) Init(config map[string]string) error {
 	}
 
 	b.snapshotLocation = config[snapshotLocationKey]
+
+	b.volumeZone = config[volumeZoneKey]
+	if b.volumeZone != "" && !zoneRegexp.MatchString(b.volumeZone) {
+		return errors.Errorf("invalid %s %q, expected a single zone such as europe-west2-b", volumeZoneKey, b.volumeZone)
+	}
 
 	b.volumeProject = config[volumeProjectKey]
 	if b.volumeProject == "" {
@@ -195,7 +215,20 @@ func (b *VolumeSnapshotter) getZoneURLs(volumeAZ string) ([]string, error) {
 	return zoneURLs, nil
 }
 
+// restoreZone returns the zone a restored disk is created in: volumeZone if it
+// is set, otherwise the zone or zones recorded in the backup.
+func (b *VolumeSnapshotter) restoreZone(volumeAZ string) string {
+	if b.volumeZone != "" {
+		return b.volumeZone
+	}
+	return volumeAZ
+}
+
 func (b *VolumeSnapshotter) CreateVolumeFromSnapshot(snapshotID, volumeType, volumeAZ string, iops *int64) (volumeID string, err error) {
+	if zone := b.restoreZone(volumeAZ); zone != volumeAZ {
+		b.log.Infof("Restoring snapshot %s into zone %s instead of %s", snapshotID, zone, volumeAZ)
+		volumeAZ = zone
+	}
 	// get the snapshot so we can apply its tags to the volume
 	res, err := b.gce.Snapshots.Get(b.snapshotProject, snapshotID).Do()
 	if err != nil {
@@ -481,6 +514,9 @@ func (b *VolumeSnapshotter) SetVolumeID(unstructuredPV runtime.Unstructured, vol
 				projectRE := regexp.MustCompile(`projects\/[^\/]+\/`)
 				handle = projectRE.ReplaceAllString(handle, "projects/"+b.volumeProject+"/")
 			}
+			if b.volumeZone != "" {
+				handle = pdLocationRegexp.ReplaceAllString(handle, "/zones/"+b.volumeZone+"/disks/")
+			}
 			pv.Spec.CSI.VolumeHandle = handle[:strings.LastIndex(handle, "/")+1] + volumeID
 		} else {
 			return nil, fmt.Errorf("unable to handle CSI driver: %s", driver)
@@ -490,6 +526,11 @@ func (b *VolumeSnapshotter) SetVolumeID(unstructuredPV runtime.Unstructured, vol
 		pv.Spec.GCEPersistentDisk.PDName = volumeID
 	} else {
 		return nil, errors.New("spec.csi and spec.gcePersistentDisk not found")
+	}
+	if b.volumeZone != "" {
+		if err := b.moveToVolumeZone(pv); err != nil {
+			return nil, err
+		}
 	}
 	res, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pv)
 	if err != nil {
@@ -525,4 +566,47 @@ func isLabelPermissionError(err error) bool {
 	errStr := err.Error()
 	return strings.Contains(errStr, "compute.snapshots.setLabels") ||
 		(strings.Contains(errStr, "permission") && strings.Contains(errStr, "label"))
+}
+
+// moveToVolumeZone points the zone and region labels and node affinity of a
+// restored PV at volumeZone, so that pods using it are scheduled where the
+// restored disk is.
+func (b *VolumeSnapshotter) moveToVolumeZone(pv *v1.PersistentVolume) error {
+	region, err := parseRegion(b.volumeZone)
+	if err != nil {
+		return err
+	}
+	target := func(key string) (string, bool) {
+		for _, k := range zoneTopologyKeys {
+			if k == key {
+				return b.volumeZone, true
+			}
+		}
+		for _, k := range regionTopologyKeys {
+			if k == key {
+				return region, true
+			}
+		}
+		return "", false
+	}
+
+	for key := range pv.Labels {
+		if value, ok := target(key); ok {
+			pv.Labels[key] = value
+		}
+	}
+
+	if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+		return nil
+	}
+	for i := range pv.Spec.NodeAffinity.Required.NodeSelectorTerms {
+		term := &pv.Spec.NodeAffinity.Required.NodeSelectorTerms[i]
+		for j := range term.MatchExpressions {
+			expr := &term.MatchExpressions[j]
+			if value, ok := target(expr.Key); ok {
+				expr.Values = []string{value}
+			}
+		}
+	}
+	return nil
 }
